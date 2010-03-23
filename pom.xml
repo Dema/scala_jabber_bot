@@ -1,3 +1,4 @@
+
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <name>ScalaBot</name>
@@ -5,9 +6,9 @@
     <groupId>kz.dema</groupId>
     <artifactId>scalabot</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <inceptionYear>2009</inceptionYear>
+    <inceptionYear>201-</inceptionYear>
     <properties>
-        <scala.version>2.7.7</scala.version>
+        <scala.version>2.8.0</scala.version>
     </properties>
 
     <repositories>
@@ -66,7 +67,16 @@
                 </exclusion>
             </exclusions>
         </dependency>
-
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hsqldb</groupId>
+            <artifactId>hsqldb</artifactId>
+            <version>2.0.0-rc9</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -131,6 +141,15 @@
                     </classpathContainers>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>2.0.2</version>
+                <configuration>
+                    <source>1.6</source>
+                    <target>1.6</target>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
     <reporting>
@@ -145,3 +164,4 @@
         </plugins>
     </reporting>
 </project>
+
