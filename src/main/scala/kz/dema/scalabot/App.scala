@@ -14,7 +14,7 @@ import java.util.{Timer, Date}
 import java.util.TimerTask
 import java.util.ArrayList
 
-case class BotConfiguration(serviceName: String, host: String, port: Option[Int], username: String, password: String, rooms: List[String])
+case class BotConfiguration(serviceName: String, host: Option[String], port: Option[Int], username: String, password: String, rooms: List[String])
 
 sealed abstract class ManagerActorMessage
 
@@ -34,17 +34,34 @@ case class GetBannedPersons() extends ManagerActorMessage
  *
  */
 object App extends Application {
+    implicit def object2Option[A](o:A) = if(o == null) {None} else {Some(o)}
+
     try {
-        var configuration = BotConfiguration("jabber.ru",
-                                             "77.88.57.181",
-                                             Some(58128),
-                                             "JABBER_USER",
-                                             "PASSWORD",
+        val jabberUser = System.getProperty("jabberUser")
+        val jabberPassword = System.getProperty("jabberPasswordr")
+        val jabberServer = System.getProperty("jabberServer")
+        val jabberServerHost = System.getProperty("jabberServerHost")
+        val jabberServerPort = (System.getProperty("jabberServerPort"):Option[String]).map(_.toInt)
+
+        var configuration = BotConfiguration(jabberServer,
+                                             jabberServerHost,
+                                             jabberServerPort,
+                                             jabberUser,
+                                             jabberPassword,
                                              List("testroom1@conference.jabber.ru"))
 
-        val cconf = new ConnectionConfiguration(configuration.host, configuration.port.getOrElse(5222),
-                                                configuration.serviceName,
-                                                ProxyInfo.forHttpProxy("10.1.164.13", 5865, null, null));
+        val proxyHost = System.getProperty("proxyHost")
+        val proxyPort = System.getProperty("proxyPort")
+        val cconf = if(!proxyHost.isEmpty) {
+            new ConnectionConfiguration(configuration.host.getOrElse(configuration.serviceName),
+                                        configuration.port.getOrElse(5222),
+                                        configuration.serviceName,
+                                        ProxyInfo.forHttpProxy(proxyHost, proxyPort.toInt, null, null))
+        } else {
+            new ConnectionConfiguration(configuration.host.getOrElse(configuration.serviceName),
+                                        configuration.port.getOrElse(5222),
+                                        configuration.serviceName)
+        }
 
         val connection = new XMPPConnection(cconf);
         SASLAuthentication.supportSASLMechanism("PLAIN", 0);
