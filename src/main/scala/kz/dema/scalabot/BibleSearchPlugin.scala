@@ -126,10 +126,10 @@ class BibleSearchPlugin extends Actor {
                          join chapters c on c.id = v.chapter_id 
                          join books b on b.id  = c.book_id
                          where c.chapter_index = ? 
-                             and b.id in (select ab.book_id from book_names_abbr ab where ab.abbreviation = ?)
+                             and b.id in (select ab.book_id from book_names_abbr ab where UPPER(ab.abbreviation) = ?)
                              and verse_index between ? and ?
                          order by v.verse_index"""
-        val result = for{ verse <- sql << chapterIdx << bookName << verseStart.getOrElse(0) << verseEnd.getOrElse(99999) <<! (rs=>ListVerse(rs,rs))
+        val result = for{ verse <- sql << chapterIdx << bookName.toUpperCase << verseStart.getOrElse(0) << verseEnd.getOrElse(99999) <<! (rs=>ListVerse(rs,rs))
         } yield {"%d %s".format(verse.idx,verse.text)}
         println("!!!!!!!!!@@@@")
         result.print
