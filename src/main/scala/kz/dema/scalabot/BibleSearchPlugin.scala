@@ -60,15 +60,17 @@ order by books.id, c.chapter_index, v.verse_index
 
   val hitsPerPage = 5;
 
-  def search(query:String, originalMsg:Message):String = {
+  def search(query:String, maxResults:Int):String = {
     val searcher = new IndexSearcher(index, true);
     val analyzer = new StandardAnalyzer(Version.LUCENE_CURRENT)
     val q = new QueryParser(Version.LUCENE_CURRENT, "text", analyzer).parse(query);
-    val hits = searcher.search(q,hitsPerPage).scoreDocs
+    val hits = searcher.search(q, maxResults).scoreDocs
 
     val result = hits.map{hit =>
       val doc = searcher.doc(hit.doc)
-      "%s %s:%s %s".format(doc.get("bookName"), doc.get("chapterIdx"), doc.get("verseIdx"), doc.get("text"))
+      println("Score:"+hit.score)
+
+      "(%2.2f) %s %s:%s %s".format(hit.score, doc.get("bookName"), doc.get("chapterIdx"), doc.get("verseIdx"), doc.get("text"))
     }.toList.mkString("\n")
 
     searcher.close
@@ -77,13 +79,15 @@ order by books.id, c.chapter_index, v.verse_index
 }
 
 class BibleSearchPlugin extends Actor {
-  case class Search(val originalMsg:Message, val narrow:Boolean, val text:String)
+  implicit def str2Option(s:String) = if(s == null || s.trim.length == 0) None else Some(s.trim)
+  implicit def str2IntOption(s:String) = if(s == null || s.trim.length == 0) None else Some(s.trim.toInt)
+  case class Search(val originalMsg:Message, val narrow:Boolean, val text:String, maxResults:Int)
   case class ShowVerse(originalMsg:Message, text:String)
 
   val bibleSearch = new BibleSearch()
 
-  val SearchCommand = """^!!(.*)$""".r
-  val SearchNarrowCommand = """^!(.*)$""".r
+  val SearchCommand = """^(\d+)?!!(.*)$""".r
+  val SearchNarrowCommand = """^(\d+)?!(.*)$""".r
   val ShowVerseCommand = """^%(.*)$""".r
 
   val ShowVerseChapter = """^(.+?)[.:;, ]+\s*(\d+)$""".r
@@ -93,20 +97,19 @@ class BibleSearchPlugin extends Actor {
 
   def receive = {
     case originalMsg:Message => originalMsg.getBody match {
-        case SearchCommand(text) =>
+        case SearchCommand(maxResults, text) =>
           println("SearchCommand:"+text)
-          self ! Search(originalMsg, false, text)
-        case SearchNarrowCommand(text) =>
-          self ! Search(originalMsg, true, text)
+          self ! Search(originalMsg, false, text, str2IntOption(maxResults).getOrElse(5))
+        case SearchNarrowCommand(maxResults, text) =>
+          self ! Search(originalMsg, true, text, str2IntOption(maxResults).getOrElse(5))
         case ShowVerseCommand(text) =>
           self ! ShowVerse(originalMsg, text)
         case xx =>println("XXX:"+xx)
       }
-    case Search(originalMsg, narrow_?, text) =>
-      App.jabberManagerActor ! SendResponse(originalMsg, bibleSearch.search(text,originalMsg))
+    case Search(originalMsg, narrow_?, text, maxResults) =>
+      App.jabberManagerActor ! SendResponse(originalMsg, bibleSearch.search(text, maxResults))
 
     case ShowVerse(originalMsg, text) =>
-      implicit def str2Option(s:String) = if(s == null || s.trim.length == 0) None else Some(s.trim)
 
       val command:Option[(String,String,Option[String],Option[String])] = text match {
         case ShowVerseRange(bookName, chapterIdx, verseStart, verseEnd) => println(1); Some((bookName.trim, chapterIdx.trim, verseStart,verseEnd))
