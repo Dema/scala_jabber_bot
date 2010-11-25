@@ -26,6 +26,15 @@ object RichSQL {
 
     implicit def conn2Statement(conn: Connection): Statement = conn.createStatement;
 
+    implicit def rrs2BooleanOption(rs: RichResultSet) = rs.nextBooleanOption;
+    implicit def rrs2ByteOption(rs: RichResultSet) = rs.nextByteOption;
+    implicit def rrs2IntOption(rs: RichResultSet) = rs.nextIntOption;
+    implicit def rrs2LongOption(rs: RichResultSet) = rs.nextLongOption;
+    implicit def rrs2FloatOption(rs: RichResultSet) = rs.nextFloatOption;
+    implicit def rrs2DoubleOption(rs: RichResultSet) = rs.nextDoubleOption;
+    implicit def rrs2StringOption(rs: RichResultSet) = rs.nextStringOption;
+    implicit def rrs2DateOption(rs: RichResultSet) = rs.nextDateOption;
+
     implicit def rrs2Boolean(rs: RichResultSet) = rs.nextBoolean;
     implicit def rrs2Byte(rs: RichResultSet) = rs.nextByte;
     implicit def rrs2Int(rs: RichResultSet) = rs.nextInt;
@@ -35,22 +44,32 @@ object RichSQL {
     implicit def rrs2String(rs: RichResultSet) = rs.nextString;
     implicit def rrs2Date(rs: RichResultSet) = rs.nextDate;
 
-    implicit def resultSet2Rich(rs: ResultSet) = new RichResultSet(rs);
+
+	implicit def resultSet2Rich(rs: ResultSet) = new RichResultSet(rs);
     implicit def rich2ResultSet(r: RichResultSet) = r.rs;
 
     class RichResultSet(val rs: ResultSet) {
 
         var pos = 1
         def apply(i: Int) = { pos = i; this }
+        
+		def nextBoolean: Boolean = {val ret = rs.getBoolean(pos); pos = pos + 1; ret}
+        def nextByte: Byte = { val ret = rs.getByte(pos); pos = pos + 1; ret}
+        def nextInt: Int = { val ret = rs.getInt(pos); pos = pos + 1; ret}
+        def nextLong: Long = { val ret = rs.getLong(pos); pos = pos + 1; ret}
+        def nextFloat: Float = { val ret = rs.getFloat(pos); pos = pos + 1; ret}
+        def nextDouble: Double = { val ret = rs.getDouble(pos); pos = pos + 1; ret}
+        def nextString: String = { val ret = rs.getString(pos); pos = pos + 1; ret}
+        def nextDate: Date = { val ret = rs.getDate(pos); pos = pos + 1; ret}
 
-        def nextBoolean: Option[Boolean] = {val ret = rs.getBoolean(pos); pos = pos + 1; if(rs.wasNull) None else Some(ret) }
-        def nextByte: Option[Byte] = { val ret = rs.getByte(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
-        def nextInt: Option[Int] = { val ret = rs.getInt(pos); pos = pos + 1; if(rs.wasNull) None else Some(ret) }
-        def nextLong: Option[Long] = { val ret = rs.getLong(pos); pos = pos + 1; if(rs.wasNull) None else Some(ret) }
-        def nextFloat: Option[Float] = { val ret = rs.getFloat(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
-        def nextDouble: Option[Double] = { val ret = rs.getDouble(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
-        def nextString: Option[String] = { val ret = rs.getString(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
-        def nextDate: Option[Date] = { val ret = rs.getDate(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
+        def nextBooleanOption: Option[Boolean] = {val ret = rs.getBoolean(pos); pos = pos + 1; if(rs.wasNull) None else Some(ret) }
+        def nextByteOption: Option[Byte] = { val ret = rs.getByte(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
+        def nextIntOption: Option[Int] = { val ret = rs.getInt(pos); pos = pos + 1; if(rs.wasNull) None else Some(ret) }
+        def nextLongOption: Option[Long] = { val ret = rs.getLong(pos); pos = pos + 1; if(rs.wasNull) None else Some(ret) }
+        def nextFloatOption: Option[Float] = { val ret = rs.getFloat(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
+        def nextDoubleOption: Option[Double] = { val ret = rs.getDouble(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
+        def nextStringOption: Option[String] = { val ret = rs.getString(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
+        def nextDateOption: Option[Date] = { val ret = rs.getDate(pos); pos = pos + 1;  if(rs.wasNull) None else Some(ret) }
 
         def foldLeft[X](init: X)(f: (ResultSet, X) => X): X = rs.next match {
             case false => init

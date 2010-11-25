@@ -6,13 +6,15 @@ import org.jivesoftware.smackx.muc._
 
 import packet.{Presence, Message, Packet}
 import proxy.ProxyInfo
-import scala.actors._
-import scala.actors.Actor._
 import scala.collection.JavaConversions._
 import scala.collection.mutable.HashMap
 import java.util.{Timer, Date}
 import java.util.TimerTask
 import java.util.ArrayList
+import se.scalablesolutions.akka.actor._
+import se.scalablesolutions.akka.config.ScalaConfig._
+import se.scalablesolutions.akka.actor.Actor._
+
 
 case class BotConfiguration (serviceName: String,
                              host: Option[String],
@@ -23,8 +25,6 @@ case class BotConfiguration (serviceName: String,
 
 sealed abstract class ManagerActorMessage
 
-case class PrivateChatMessage(packet: Packet)
-case class GroupChatMessage(packet: Packet)
 
 class MessageType extends Enumeration{
   val GroupChat = Value("groupchat")
@@ -43,25 +43,31 @@ object App {
 
   implicit def object2Option[A](o:A) = if(o == null) {None} else {Some(o)}
 
+    var jabberManagerActor:ActorRef = null 
+    val statusProcessor = actorOf[StatusProcessor]
+    val plugins:List[LocalActorRef] = List(actorOf[BibleSearchPlugin]).map(_.asInstanceOf[LocalActorRef])
+
   def main(args:Array[String]) {
     
     try {
-      val jabberUser = System.getProperty("jabberUser")
-      val jabberPassword = System.getProperty("jabberPassword")
-      val jabberServer = System.getProperty("jabberServer")
-      val jabberServerHost = System.getProperty("jabberServerHost")
-      val jabberServerPort = (System.getProperty("jabberServerPort"):Option[String]).map(_.toInt)
+      val jabberUser = System.getProperty("jabberUser") getOrElse "demabot"
+      val jabberPassword = System.getProperty("jabberPassword") getOrElse "5088"
+      val jabberServer = System.getProperty("jabberServer") getOrElse "jabber.ru"
+      val jabberServerHost = System.getProperty("jabberServerHost") getOrElse "77.88.57.181"
+      val jabberServerPort = (System.getProperty("jabberServerPort"):Option[String]).map(_.toInt) getOrElse 80
+
 
       var configuration = BotConfiguration(jabberServer,
                                            jabberServerHost,
                                            jabberServerPort,
                                            jabberUser,
                                            jabberPassword,
-                                           List("testroom1@conference.jabber.ru"))
+                                           List("christian@conference.jabber.ru"))
 
       val proxyHost:Option[String] = System.getProperty("proxyHost")
       val proxyPort:Option[String] = System.getProperty("proxyPort")
       val cconf = if(!proxyHost.isEmpty) {
+        println("PROXY!")
         new ConnectionConfiguration(configuration.host.getOrElse(configuration.serviceName),
                                     configuration.port.getOrElse(5222),
                                     configuration.serviceName,
@@ -71,16 +77,19 @@ object App {
                                     configuration.port.getOrElse(5222),
                                     configuration.serviceName)
       }
-
       val connection = new XMPPConnection(cconf);
+    
+    jabberManagerActor = actorOf(new JabberManagerActor(connection))
+
+    val supervisor = Supervisor(
+            SupervisorConfig(RestartStrategy(OneForOne, 1000, 1000, List(classOf[Throwable])),
+            (List(jabberManagerActor, statusProcessor) ++ plugins).map(Supervise(_, LifeCycle(Permanent)))))
       SASLAuthentication.supportSASLMechanism("PLAIN", 0);
 
       connection.connect();
       connection.login(configuration.username, configuration.password);
 
-      JabberManagerActor.start(connection)
-
-      configuration.rooms.foreach(JabberManagerActor ! JoinMUC(_))
+      configuration.rooms.foreach(jabberManagerActor ! JoinMUC(_))
 
       val collector: PacketCollector = connection.createPacketCollector(new PacketFilter() {
           def accept(p: Packet) = true
@@ -88,13 +97,8 @@ object App {
 
       while (true) {
         try {
-          println("c1")
           val packet = collector.nextResult
-          println("c2")
-          println(JabberManagerActor.z)
-          JabberManagerActor ! packet
-          println(JabberManagerActor.z)
-          println("c3")
+          jabberManagerActor ! packet
         } catch {
           case e => e.printStackTrace
         }
@@ -111,30 +115,20 @@ object MUCEventsListener {
 }
 
 
-object StatusProcessor extends Actor {
+class StatusProcessor extends Actor {
   val statuses = HashMap[String, (Date, Int)]() //JID, Дата последней смены статуса, количество смен статуса
-  start
-  def act = loop {
-    react{
+  def receive = {
       case s=>
     }
-  }
 }
-object JabberManagerActor extends Actor {
+class JabberManagerActor(val connection:XMPPConnection) extends Actor {
   val MAX_MSG_LENGTH = 350
   case class GetBannedPersons
   
 
   val rooms = HashMap[String, MultiUserChat]()
-  var connection: XMPPConnection = null
 
-  def start(connection: XMPPConnection) {
-    this.connection = connection
-    super.start
-  }
-  def z = this.mailboxSize
-  def act = loop {
-    receiveWithin(1000) {
+  def receive = {
 
       case GetBannedPersons => {
           for{room <- rooms.keySet} {
@@ -148,9 +142,11 @@ object JabberManagerActor extends Actor {
           //Не загружаем историю сообщений, во избежанение ложных срабатываний
           val history = new DiscussionHistory();
           history.setMaxStanzas(0);
-          muc.join("ScalaBot", "", history, SmackConfiguration.getPacketReplyTimeout())
+          muc.join("BibleBot", "", history, SmackConfiguration.getPacketReplyTimeout())
 
           rooms.put(roomName, muc)
+          println("ROOMS:")
+          rooms.keys.foreach(println _)
         }
 
       case LeaveMUC(room) => rooms.get(room) match {
@@ -160,26 +156,34 @@ object JabberManagerActor extends Actor {
           case _ => ()
         }
       case SendResponse(originalMsg, body) => originalMsg.getType match {
-          case Message.Type.groupchat if body.length <= MAX_MSG_LENGTH =>
+          case Message.Type.groupchat if body.length <= MAX_MSG_LENGTH && body.lines.size <= 2 =>
             try{
-              val (roomPre, nickPre) = originalMsg.getFrom.span(_ != '/')
-              val (room, nick) = (roomPre, nickPre.tail)
+              val Array(room, nick) = originalMsg.getFrom.split('/')
 
-              rooms.get(room).foreach(_.sendMessage(nick+": "+body))
+              rooms.get(room).foreach(_.sendMessage(nick + ": " + body))
             }catch{
               case x => x.printStackTrace
             }
-          case Message.Type.chat =>
+          case _ => 
+            val newMessage = new Message(originalMsg.getFrom,Message.Type.chat)
+            newMessage.setBody(body)
+            connection.sendPacket(newMessage)
         }
 
       case p: Packet => 
-        println("packet:"+p)
+
         p match {
           case msg: Message =>
-            
-            MessageProcessor ! msg
+          if(msg.getFrom.indexOf('/') > -1){
+                val Array(roomJID, nickName) = msg.getFrom.split('/')
+                println("packet: from: %s, body: %s".format(msg.getFrom,msg.getBody))
+                val room = rooms(roomJID)
+                if(room.getNickname != nickName){//Ignore messages from myself
+                    App.plugins.foreach(_ ! msg)
+                }
+            }
           case p: Presence =>
-            StatusProcessor ! p
+            App.statusProcessor ! p
           case m =>
             println("ZZZ: "+m.getClass)
         }
@@ -187,32 +191,6 @@ object JabberManagerActor extends Actor {
       case x =>
         println("Не знаю что пришло: "+x)
     }
-  }
-
-}
-object MessageProcessor extends Actor {
-  def z = this.mailboxSize
-  def ignoreMsg:PartialFunction[String,Unit] = {
-    case z => //Игнорировать сообщение
-      println("Игнорируем сообщение: "+z)
-  }
-  val plugins:List[Plugin] = List(BibleSearchPlugin)
-
-  start
-  
-  def act = loop {
-    react {
-      case msg:Message =>
-        println("MessageProcessor:"+msg)
-        try{
-          plugins.map(_.processIncomingMessage(msg)).foldRight(ignoreMsg)(_ orElse _)(msg.getBody)
-        }catch{
-          case x => x.printStackTrace
-        }
-        println("MessageProcessor_after")
-      case x => println("unknown: "+x)
-    }
-  }
 }
 
 // vim: set ts=4 sw=4 et:
