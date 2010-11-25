@@ -47,6 +47,8 @@ object App {
     val statusProcessor = actorOf[StatusProcessor]
     val plugins:List[LocalActorRef] = List(actorOf[BibleSearchPlugin]).map(_.asInstanceOf[LocalActorRef])
 
+  val rooms = HashMap[String, MultiUserChat]()
+
   def main(args:Array[String]) {
     
     try {
@@ -126,41 +128,44 @@ class JabberManagerActor(val connection:XMPPConnection) extends Actor {
   case class GetBannedPersons
   
 
-  val rooms = HashMap[String, MultiUserChat]()
 
   def receive = {
 
       case GetBannedPersons => {
-          for{room <- rooms.keySet} {
-            val chat = rooms.get(room)
+          for{room <- App.rooms.keySet} {
+            val chat = App.rooms.get(room)
             (room, chat.map(c=>new ArrayList[Affiliate](c.getOutcasts).toList.map(_.getJid())))
           }
         }
 
-      case JoinMUC(roomName) => if (!rooms.contains(roomName)) {
+      case JoinMUC(roomName) => if (!App.rooms.contains(roomName)) {
           val muc = new MultiUserChat(connection, roomName)
           //Не загружаем историю сообщений, во избежанение ложных срабатываний
           val history = new DiscussionHistory();
           history.setMaxStanzas(0);
           muc.join("BibleBot", "", history, SmackConfiguration.getPacketReplyTimeout())
 
-          rooms.put(roomName, muc)
+          App.rooms.put(roomName, muc)
           println("ROOMS:")
-          rooms.keys.foreach(println _)
+          App.rooms.keys.foreach(println _)
         }
 
-      case LeaveMUC(room) => rooms.get(room) match {
+      case LeaveMUC(room) => App.rooms.get(room) match {
           case Some(muc) => 
             muc.leave
-            rooms.remove(room)
+            App.rooms.remove(room)
           case _ => ()
         }
       case SendResponse(originalMsg, body) => originalMsg.getType match {
+          case _ if body.trim.length == 0 => 
+          val newMessage = new Message(originalMsg.getFrom,Message.Type.chat)
+            newMessage.setBody("Ничего не найдено")
+            connection.sendPacket(newMessage)
           case Message.Type.groupchat if body.length <= MAX_MSG_LENGTH && body.lines.size <= 2 =>
             try{
               val Array(room, nick) = originalMsg.getFrom.split('/')
 
-              rooms.get(room).foreach(_.sendMessage(nick + ": " + body))
+              App.rooms.get(room).foreach(_.sendMessage(nick + ": " + body))
             }catch{
               case x => x.printStackTrace
             }
@@ -177,7 +182,7 @@ class JabberManagerActor(val connection:XMPPConnection) extends Actor {
           if(msg.getFrom.indexOf('/') > -1){
                 val Array(roomJID, nickName) = msg.getFrom.split('/')
                 println("packet: from: %s, body: %s".format(msg.getFrom,msg.getBody))
-                val room = rooms(roomJID)
+                val room = App.rooms(roomJID)
                 if(room.getNickname != nickName){//Ignore messages from myself
                     App.plugins.foreach(_ ! msg)
                 }
